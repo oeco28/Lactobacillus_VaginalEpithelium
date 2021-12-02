@@ -1,0 +1,32 @@
+#!/bin/bash
+#SBATCH --partition=popgenom,cas,kamiak         ### Partition
+#SBATCH --job-name=map               ### Job name
+#SBATCH --output=/data/cornejo/projects/ocornejo_projects/compute/2021/call2-%a.out      ### File in which to store job output
+#SBATCH --error=/data/cornejo/projects/ocornejo_projects/compute/2021/call2-%a.err       ### File in which to store job error messages
+#SBATCH --workdir=/data/cornejo/projects/ocornejo_projects/compute/2021/
+#SBATCH --array=1-3                   ### Submit separate jobs for each sample in the array
+#SBATCH --time=7-00:00:00       ### Wall clock time limit in Days-HH:MM:SS
+#SBATCH --nodes=1               ### Node count required for the job
+#SBATCH --ntasks-per-node=1     ### Number of tasks to be launched per Node (MPI processes)
+#SBATCH --mem=100G
+
+
+SampleName=$(sed -n ''$SLURM_ARRAY_TASK_ID'p' list_samples | awk '{print $2}')
+#FileName=$(sed -n ''$SLURM_ARRAY_TASK_ID'p' list_samples | awk '{print $1}')
+
+module load java/oracle_1.8.0_92
+module load picard/2.21.4
+module load samtools/1.9
+module load gcc/7.3.0
+module load hisat2/2.2.1
+
+ref="/data/cornejo/projects/reference_genomes/h_sapiens/hg19.fa"
+
+hisat2 --phred33 -k 10 --met-file stats/$i.stats --rg-id $i --rg SM:$i --rg PL:illumina \
+        -p 1 --rna-strandness RF --fr --dta --un-conc-gz unmapped/$i.unmapped \
+        -x /media/venezuela7/human_ref/grch38_snp_tran/genome_snp_tran -1 trimmed/''$SampleName''_R1_val_1.fq.gz -2 trimmed/''$SampleName''_R2_val_2.fq.gz -S ./mapped_reads/$SampleName.sam
+
+picard FixMateInformation INPUT=mapped_reads/$SampleName.sam OUTPUT=mapped_reads/$SampleName.fix.sam VALIDATION_STRINGENCY=SILENT
+
+samtools view -@ 10 -b -h mapped_reads/$SampleName.fix.sam > mapped_reads/$SampleName.bam
+samtools sort -o mapped_reads/$SampleName.sorted.fixed.bam -O bam -T $SampleName -@ 10 mapped_reads/$SampleName.bam
